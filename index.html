@@ -18759,7 +18759,13 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
                 }
 
                 log('সার্ভিস ওয়ার্কার রেজিস্টার করা হচ্ছে (/firebase-messaging-sw.js)...');
-                const registration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
+                let registration;
+                try {
+                    registration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
+                } catch (swError) {
+                    warn('Firebase Messaging সার্ভিস ওয়ার্কার পাওয়া যায়নি: ' + swError.message);
+                    return { ok: false, msg: 'পুশ সার্ভিস ওয়ার্কার পাওয়া যায়নি। firebase-messaging-sw.js ডেপ্লয়ে দিন।' };
+                }
                 // 🔧 [v16.5.68] নোটিফিকেশন-ক্লিকে 404 ঠিক করতে: এই পেজের আসল ঠিকানা SW-কে জানিয়ে রাখা (অ্যাপ বন্ধ থাকলে ক্লিকে ঠিক এই পেজই খুলবে)
                 try { const _c = await caches.open('mf-app'); await _c.put('pagePath', new Response(location.origin + location.pathname)); } catch (e) { }
                 log('✅ সার্ভিস ওয়ার্কার রেজিস্টার সফল।');
