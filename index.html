@@ -12072,13 +12072,14 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             el.type = 'file';
             el.id = 'chat-image-input-global';
             el.accept = 'image/*';
+            el.multiple = true;
             el.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;';
             el.addEventListener('change', () => {
-                const file = el.files && el.files[0];
+                const files = Array.from(el.files || []);
                 el.value = '';
-                if (!file) { _chatImgLog('ফাইল-পিকার বন্ধ হয়েছে, কোনো ছবি নির্বাচিত হয়নি'); return; }
-                _chatImgLog('change ইভেন্ট এসেছে, লক্ষ্য =', _chatImagePickTarget);
-                if (_chatImagePickTarget === 'dm') sendDmImage(file); else sendChatImage(file);
+                if (!files.length) { _chatImgLog('ফাইল-পিকার বন্ধ হয়েছে, কোনো ছবি নির্বাচিত হয়নি'); return; }
+                _chatImgLog('change ইভেন্ট এসেছে, লক্ষ্য =', _chatImagePickTarget, 'ছবির সংখ্যা =', files.length);
+                if (_chatImagePickTarget === 'dm') sendDmImages(files); else sendChatImages(files);
             });
             document.body.appendChild(el);
             return el;
@@ -12105,19 +12106,29 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
             return null;
         };
 
-        const sendChatImage = async (file) => {
-            const err = validateChatImageFile(file);
-            if (err) { toast('❌ ' + err); return; }
+        const sendChatImages = async (files) => {
+            const list = Array.isArray(files) ? files : (files ? [files] : []);
+            if (!list.length) return;
+            if (list.length > 10) { toast('❌ একসাথে সর্বোচ্চ ১০টি ছবি পাঠানো যাবে'); return; }
+            for (const file of list) {
+                const err = validateChatImageFile(file);
+                if (err) { toast('❌ ' + err); return; }
+            }
             const user = window.currentUser;
             if (!user) { toast('মেসেজ পাঠাতে লগইন করুন');
                 openLoginModal(); return; }
             const displayName = getProfileDisplayName(user.email, user.displayName);
-            toast('📤 ছবি পাঠানো হচ্ছে...');
+            toast(list.length === 1 ? '📤 ছবি পাঠানো হচ্ছে...' : `📤 ${toBengaliNum(list.length)}টি ছবি পাঠানো হচ্ছে...`);
             try {
                 _chatImgLog('আপলোড শুরু (Apps Script-এ পাঠানো হচ্ছে)');
-                const imageUrl = await uploadImageToDrive(file, chatImageFileTag(displayName), '', '', null, '', 'chat');
-                _chatImgLog('Drive থেকে URL এলো:', imageUrl);
-                const msg = { id: uid(), text: '', imageUrl, sender: user.email, displayName, timestamp: new Date()
+                const imageUrls = [];
+                for (let i = 0; i < list.length; i++) {
+                    const imageUrl = await uploadImageToDrive(list[i], chatImageFileTag(displayName) + (list.length > 1 ? '_' + (i + 1) : ''), '', '', null, '', 'chat');
+                    if (imageUrl) imageUrls.push(imageUrl);
+                }
+                if (!imageUrls.length) throw new Error('কোনো ছবির URL পাওয়া যায়নি');
+                _chatImgLog('Drive থেকে URL এলো:', imageUrls);
+                const msg = { id: uid(), text: '', imageUrl: imageUrls[0], imageUrls, sender: user.email, displayName, timestamp: new Date()
                         .toISOString() };
                 state.chat.push(msg);
                 saveState();
@@ -12955,19 +12966,29 @@ body.dark-mode .mf-erp-h { color: var(--gold-100, #f3e6c4); }
         };
 
         // 🆕 DM-এও ছবি পাঠানো — গ্রুপ চ্যাটের sendChatImage-এর অনুরূপ, একই নামকরণ প্যাটার্ন
-        const sendDmImage = async (file) => {
-            const err = validateChatImageFile(file);
-            if (err) { toast('❌ ' + err); return; }
+        const sendDmImages = async (files) => {
+            const list = Array.isArray(files) ? files : (files ? [files] : []);
+            if (!list.length) return;
+            if (list.length > 10) { toast('❌ একসাথে সর্বোচ্চ ১০টি ছবি পাঠানো যাবে'); return; }
+            for (const file of list) {
+                const err = validateChatImageFile(file);
+                if (err) { toast('❌ ' + err); return; }
+            }
             if (!dmCurrentThreadId || !window.currentUser) return;
             const displayName = getProfileDisplayName(window.currentUser.email, window.currentUser.displayName);
-            toast('📤 ছবি পাঠানো হচ্ছে...');
+            toast(list.length === 1 ? '📤 ছবি পাঠানো হচ্ছে...' : `📤 ${toBengaliNum(list.length)}টি ছবি পাঠানো হচ্ছে...`);
             try {
                 _chatImgLog('আপলোড শুরু (Apps Script-এ পাঠানো হচ্ছে)');
-                const imageUrl = await uploadImageToDrive(file, chatImageFileTag(displayName), '', '', null, '', 'chat');
-                _chatImgLog('Drive থেকে URL এলো:', imageUrl);
+                const imageUrls = [];
+                for (let i = 0; i < list.length; i++) {
+                    const u = await uploadImageToDrive(list[i], chatImageFileTag(displayName) + (list.length > 1 ? '_' + (i + 1) : ''), '', '', null, '', 'chat');
+                    if (u) imageUrls.push(u);
+                }
+                if (!imageUrls.length) throw new Error('কোনো ছবির URL পাওয়া যায়নি');
+                _chatImgLog('Drive থেকে URL এলো:', imageUrls);
                 const { collection, addDoc, doc, setDoc } = window._firestore;
                 await addDoc(collection(window._firestoreDb, 'dm_threads', dmCurrentThreadId, 'messages'), {
-                    sender: window.currentUser.email, senderName: displayName, text: '', imageUrl, timestamp: new Date()
+                    sender: window.currentUser.email, senderName: displayName, text: '', imageUrl: imageUrls[0], imageUrls, timestamp: new Date()
                         .toISOString(), ...dmxReplyPayload()
                 });
                 dmxClearReply();
@@ -17494,7 +17515,7 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
                       ${mine ? '' : `<div class="cd-nm">${escapeHtml(name)}</div>`}
                       ${m.forwarded ? `<div class="cd-fwd">↪ ফরওয়ার্ড করা মেসেজ</div>` : ''}
                       ${quote}
-                      ${m.imageUrl ? `<img class="cd-img" src="${escapeHtml(toDirectImageUrl(m.imageUrl))}" data-cd-img="${escapeHtml(m.imageUrl)}" alt="">` : ''}
+                      ${(() => { const urls = (Array.isArray(m.imageUrls) && m.imageUrls.length) ? m.imageUrls : (m.imageUrl ? [m.imageUrl] : []); return urls.length ? urls.map((u, i) => `<img class="cd-img" src="${escapeHtml(toDirectImageUrl(u))}" data-cd-img="${escapeHtml(u)}" data-cd-img-list="${escapeHtml(JSON.stringify(urls))}" data-cd-img-index="${i}" alt="সংযুক্ত ছবি ${i + 1}">${urls.length > 1 ? '<div class="cd-img-count">' + toBengaliNum(i + 1) + ' / ' + toBengaliNum(urls.length) + '</div>' : ''}`).join('') : ''; })()}
                       ${m.text ? `<div class="cd-tx">${escapeHtml(m.text)}</div>` : ''}
                       <div class="cd-tm">${pinned ? '📌 ' : ''}${escapeHtml(cdTime(m.timestamp))}</div>
                     </div>
@@ -17774,7 +17795,15 @@ ${pmItem('sidebar-action-ai', '', 'এআই চ্যাট বট')}
             const dl = t.closest('[data-cd-del]');
             if (dl) { const id = dl.dataset.cdDel; cdResetMenus(); confirmDelete('মেসেজ মুছে ফেলা হবে?', () => deleteChatMessage(id)); return; }
             const im = t.closest('[data-cd-img]');
-            if (im) { try { openImagePreview(toDirectImageUrl(im.dataset.cdImg), { el: im }); } catch (er) {} return; }
+            if (im) {
+                try {
+                    let list = [];
+                    try { list = JSON.parse(im.dataset.cdImgList || '[]'); } catch (e) { list = []; }
+                    const index = Math.max(0, parseInt(im.dataset.cdImgIndex || '0', 10) || 0);
+                    openImagePreview(toDirectImageUrl(im.dataset.cdImg), { el: im, list: list.map(u => toDirectImageUrl(u)), index });
+                } catch (er) {}
+                return;
+            }
             const bub = t.closest('[data-cd-pick]');
             if (bub) { const id = bub.dataset.cdPick; _cdPickFor = (_cdPickFor === id) ? null : id; _cdMoreFor = null; cdRefresh(); return; }
             if (t.closest('#cd-send')) { cdSend(); }
